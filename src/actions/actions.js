@@ -186,7 +186,59 @@ module.exports = (router) => {
 
           // Resolve the action.
           router.formio.log('Action', req, handler, method, action.name, action.title);
-          action.resolve(handler, method, req, res, cb);
+
+          // Instantiate ActionItem here.
+          router.formio.mongoose.models.actionItem.create(hook.alter('actionItem', {
+            title: action.title,
+            form: req.formId,
+            submission: res.resource ? res.resource.item._id : req.body._id,
+            action: action.name,
+            handler,
+            method,
+            state: 'inprogress',
+            messages: [
+              {
+                datetime: new Date(),
+                info: 'Starting Action',
+                data: {}
+              }
+            ]
+          }, req), (err, actionItem) => {
+            // Mongoose has issues if you call "save" too frequently on the same item. We need to wait till the previous
+            // save is complete before calling again.
+            let lastSavePromise = Promise.resolve();
+            const setActionItemMessage = (message, data = {}, state = null) => {
+              lastSavePromise.then(() => {
+                actionItem.messages.push({
+                  datetime: new Date(),
+                  info: message,
+                  data
+                });
+
+                if (state) {
+                  actionItem.state = state;
+                }
+
+                lastSavePromise = actionItem.save();
+              });
+            };
+
+            action.resolve(handler, method, req, res, (err) => {
+              if (err) {
+                // Error has occurred.
+                setActionItemMessage('Error Occurred', err, 'error');
+                return cb(err);
+              }
+
+              // Action has completed successfully
+              setActionItemMessage(
+                'Action Resolved (no longer blocking)',
+                {},
+                actionItem.state === 'inprogress' ? 'complete' : actionItem.state,
+              );
+              return cb();
+            }, setActionItemMessage);
+          });
         }, (err) => {
           if (err) {
             router.formio.log('Actions execution fail', req, handler, method, err);

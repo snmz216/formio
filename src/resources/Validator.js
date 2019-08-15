@@ -79,11 +79,12 @@ const getRules = (type) => [
     name: 'custom',
     params: {
       component: Joi.any(),
-      data: Joi.any()
+      data: Joi.any(),
+      form: Joi.any(),
     },
     validate(params, value, state, options) {
-      const component = params.component;
-      const data = params.data;
+      const {component, data, form} = params;
+
       let row = state.parent;
       let valid = true;
 
@@ -108,7 +109,10 @@ const getRules = (type) => [
             row: _row,
             scope: {data},
             component: component,
-            valid: valid
+            valid,
+            form,
+            _,
+            moment,
           });
 
           // Execute the script.
@@ -753,7 +757,7 @@ class Validator {
 
         // Add the custom validations.
         if (component.validate && component.validate.custom) {
-          fieldValidator = fieldValidator.custom(component, submission.data);
+          fieldValidator = fieldValidator.custom(component, submission.data, this.form);
         }
 
         // Add the json logic validations.
@@ -969,7 +973,7 @@ class Validator {
                 if (component) {
                   result.hidden = result.hidden ||
                     !checkConditional(component,
-                      _.get(value, result.path.slice(0, result.path.length - 1)), result.submission, true);
+                      _.get(value, result.path.slice(0, result.path.length - 1), value), result.submission, true);
 
                   const clearOnHide = util.isBoolean(_.get(component, 'clearOnHide')) ?
                     util.boolean(_.get(component, 'clearOnHide')) : true;
